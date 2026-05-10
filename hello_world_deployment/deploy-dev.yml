@@ -1,0 +1,105 @@
+name: Deploy to DEV
+
+on:
+  push:
+    branches:
+      - main        # every push to main triggers a deploy to DEV
+
+env:
+  AWS_REGION:     us-east-1
+  ECR_REPOSITORY: hello-deploy          # must match your ECR repo name
+  CONTAINER_NAME: hello-deploy-dev
+  APP_PORT:       8000
+
+jobs:
+  deploy:
+    name: Build → Push ECR → Deploy EC2
+    runs-on: ubuntu-latest
+    environment: DEV                    # uses the "DEV" GitHub Environment (secrets isolated)
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. Configure AWS credentials ────────────────────────────────────────
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      # ── 3. Login to Amazon ECR ──────────────────────────────────────────────
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── 4. Build & push Docker image ────────────────────────────────────────
+      - name: Build and push image to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG:    ${{ github.sha }}
+        run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+          docker build -t "$IMAGE_URI" .
+          docker push  "$IMAGE_URI"
+
+          # Also tag as "latest" for easy manual pulls
+          docker tag  "$IMAGE_URI" "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      # ── 5. SSH into EC2 and redeploy ────────────────────────────────────────
+      - name: Deploy on EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host:        ${{ secrets.EC2_HOST }}          # public IP or DNS
+          username:    ${{ secrets.EC2_USER }}          # e.g. "ec2-user" or "ubuntu"
+          key:         ${{ secrets.EC2_SSH_KEY }}       # private key (PEM content)
+          envs:        IMAGE_URI,CONTAINER_NAME,APP_PORT,AWS_REGION
+          script: |
+            set -e
+
+            # Authenticate Docker with ECR from inside the instance
+            aws ecr get-login-password --region "$AWS_REGION" | \
+              docker login --username AWS --password-stdin \
+              "$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com"
+
+            # Pull the exact image that was just built
+            docker pull "$IMAGE_URI"
+
+            # Stop & remove the old container (ignore error if it doesn't exist)
+            docker stop  "$CONTAINER_NAME" 2>/dev/null || true
+            docker rm    "$CONTAINER_NAME" 2>/dev/null || true
+
+            # Start the new container
+            docker run -d \
+              --name    "$CONTAINER_NAME" \
+              --restart unless-stopped   \
+              -p        "$APP_PORT:$APP_PORT" \
+              "$IMAGE_URI"
+
+            # Quick health check — wait up to 15 s
+            echo "Waiting for service to be healthy..."
+            for i in $(seq 1 5); do
+              sleep 3
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$APP_PORT/health || true)
+              if [ "$STATUS" = "200" ]; then
+                echo "✅ Service is up (HTTP 200)"
+                exit 0
+              fi
+              echo "  attempt $i — got HTTP $STATUS"
+            done
+
+            echo "❌ Health check failed after 15 s"
+            docker logs "$CONTAINER_NAME"
+            exit 1
+        env:
+          IMAGE_URI:      ${{ steps.build-image.outputs.image_uri }}
+          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
+          APP_PORT:       ${{ env.APP_PORT }}
+          AWS_REGION:     ${{ env.AWS_REGION }}
