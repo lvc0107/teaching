@@ -7,7 +7,7 @@ on:
 
 env:
   AWS_REGION:     us-east-1
-  ECR_REPOSITORY: hello-deploy          # must match your ECR repo name
+  ECR_REPOSITORY: deploy1          # must match your ECR repo name
   CONTAINER_NAME: hello-deploy-dev
   APP_PORT:       8000
 
