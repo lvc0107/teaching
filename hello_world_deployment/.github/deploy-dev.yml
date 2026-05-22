@@ -6,10 +6,13 @@ on:
       - main        # every push to main triggers a deploy to DEV
 
 env:
-  AWS_REGION:     us-east-1
-  ECR_REPOSITORY: deploy1          # must match your ECR repo name
-  CONTAINER_NAME: hello-deploy-dev
-  APP_PORT:       8000
+  AWS_REGION:               us-east-1
+  BACKEND_REPOSITORY_NAME:  deploy1-backend
+  FRONTEND_REPOSITORY_NAME: deploy1-frontend
+  CONTAINER_BACKEND:        backend-container
+  CONTAINER_FRONTEND:       frontend-container
+  BACKEND_PORT:             8000
+  FRONTEND_PORT:            3000
 
 jobs:
   deploy:
@@ -42,16 +45,21 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG:    ${{ github.sha }}
         run: |
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          BACKEND_IMAGE_URI="$ECR_REGISTRY/$BACKEND_REPOSITORY_NAME:$IMAGE_TAG"
+          FRONTEND_IMAGE_URI="$ECR_REGISTRY/$FRONTEND_REPOSITORY_NAME:$IMAGE_TAG"
 
-          docker build -t "$IMAGE_URI" .
-          docker push  "$IMAGE_URI"
+          docker build -t "$BACKEND_IMAGE_URI" backend
+          docker push  "$BACKEND_IMAGE_URI"
+          docker tag  "$BACKEND_IMAGE_URI" "$ECR_REGISTRY/$BACKEND_REPOSITORY_NAME:latest"
+          docker push "$ECR_REGISTRY/$BACKEND_REPOSITORY_NAME:latest"
 
-          # Also tag as "latest" for easy manual pulls
-          docker tag  "$IMAGE_URI" "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
-          docker push "$ECR_REGISTRY/$ECR_REPOSITORY:latest"
+          docker build -t "$FRONTEND_IMAGE_URI" frontend
+          docker push  "$FRONTEND_IMAGE_URI"
+          docker tag  "$FRONTEND_IMAGE_URI" "$ECR_REGISTRY/$FRONTEND_REPOSITORY_NAME:latest"
+          docker push "$ECR_REGISTRY/$FRONTEND_REPOSITORY_NAME:latest"
 
-          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "backend_image_uri=$BACKEND_IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "frontend_image_uri=$FRONTEND_IMAGE_URI" >> "$GITHUB_OUTPUT"
 
       # ── 5. SSH into EC2 and redeploy ────────────────────────────────────────
       - name: Deploy on EC2 via SSH
@@ -60,7 +68,7 @@ jobs:
           host:        ${{ secrets.EC2_HOST }}          # public IP or DNS
           username:    ${{ secrets.EC2_USER }}          # e.g. "ec2-user" or "ubuntu"
           key:         ${{ secrets.EC2_SSH_KEY }}       # private key (PEM content)
-          envs:        IMAGE_URI,CONTAINER_NAME,APP_PORT,AWS_REGION
+          envs:        BACKEND_IMAGE_URI,FRONTEND_IMAGE_URI,CONTAINER_BACKEND,CONTAINER_FRONTEND,BACKEND_PORT,FRONTEND_PORT,AWS_REGION
           script: |
             set -e
 
@@ -69,37 +77,55 @@ jobs:
               docker login --username AWS --password-stdin \
               "$(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com"
 
-            # Pull the exact image that was just built
-            docker pull "$IMAGE_URI"
+            # Pull the exact images that were just built
+            docker pull "$BACKEND_IMAGE_URI"
+            docker pull "$FRONTEND_IMAGE_URI"
 
-            # Stop & remove the old container (ignore error if it doesn't exist)
-            docker stop  "$CONTAINER_NAME" 2>/dev/null || true
-            docker rm    "$CONTAINER_NAME" 2>/dev/null || true
+            # Ensure the containers share the same docker network
+            docker network create hello-deploy-network 2>/dev/null || true
 
-            # Start the new container
+            # Stop & remove old containers
+            docker stop  "$CONTAINER_BACKEND" 2>/dev/null || true
+            docker rm    "$CONTAINER_BACKEND" 2>/dev/null || true
+            docker stop  "$CONTAINER_FRONTEND" 2>/dev/null || true
+            docker rm    "$CONTAINER_FRONTEND" 2>/dev/null || true
+
+            # Start the backend container
             docker run -d \
-              --name    "$CONTAINER_NAME" \
-              --restart unless-stopped   \
-              -p        "$APP_PORT:$APP_PORT" \
-              "$IMAGE_URI"
+              --name    "$CONTAINER_BACKEND" \
+              --restart unless-stopped \
+              --network hello-deploy-network \
+              -p        "$BACKEND_PORT:$BACKEND_PORT" \
+              "$BACKEND_IMAGE_URI"
 
-            # Quick health check — wait up to 15 s
-            echo "Waiting for service to be healthy..."
+            # Start the frontend container on the same network
+            docker run -d \
+              --name    "$CONTAINER_FRONTEND" \
+              --restart unless-stopped \
+              --network hello-deploy-network \
+              -p        "$FRONTEND_PORT:$FRONTEND_PORT" \
+              "$FRONTEND_IMAGE_URI"
+
+            # Quick health check for backend
+            echo "Waiting for backend service to be healthy..."
             for i in $(seq 1 5); do
               sleep 3
-              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$APP_PORT/health || true)
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$BACKEND_PORT/health || true)
               if [ "$STATUS" = "200" ]; then
-                echo "✅ Service is up (HTTP 200)"
+                echo "✅ Backend is up (HTTP 200)"
                 exit 0
               fi
               echo "  attempt $i — got HTTP $STATUS"
             done
 
             echo "❌ Health check failed after 15 s"
-            docker logs "$CONTAINER_NAME"
+            docker logs "$CONTAINER_BACKEND"
             exit 1
         env:
-          IMAGE_URI:      ${{ steps.build-image.outputs.image_uri }}
-          CONTAINER_NAME: ${{ env.CONTAINER_NAME }}
-          APP_PORT:       ${{ env.APP_PORT }}
-          AWS_REGION:     ${{ env.AWS_REGION }}
+          BACKEND_IMAGE_URI:  ${{ steps.build-image.outputs.backend_image_uri }}
+          FRONTEND_IMAGE_URI: ${{ steps.build-image.outputs.frontend_image_uri }}
+          CONTAINER_BACKEND:  ${{ env.CONTAINER_BACKEND }}
+          CONTAINER_FRONTEND: ${{ env.CONTAINER_FRONTEND }}
+          BACKEND_PORT:       ${{ env.BACKEND_PORT }}
+          FRONTEND_PORT:      ${{ env.FRONTEND_PORT }}
+          AWS_REGION:         ${{ env.AWS_REGION }}

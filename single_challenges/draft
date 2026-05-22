@@ -1,0 +1,73 @@
+
+
+
+MODEL A
+
+1. grep -r "Column assignment doesn't support type" /repo --include="*.py" -l
+2. grep -n "Column assignment doesn't support type" /repo/databricks/koalas/frame.py
+3. grep -n "_assign" /repo/databricks/koalas/frame.py
+4.Edit /repo/databricks/koalas/frame.py
+Replace:
+
+for k, v in kwargs.items():
+            if not (isinstance(v, (Series, spark.Column)) or callable(v) or is_scalar(v)):
+                raise TypeError(
+                    "Column assignment doesn't support type " "{0}".format(type(v).__name__)
+                )
+            if callable(v):
+                kwargs[k] = v(self)
+
+
+
+With:
+
+for k, v in kwargs.items():
+            is_invalid_assignee = (
+                not (isinstance(v, (Series, spark.Column)) or callable(v) or is_scalar(v))
+            ) or isinstance(v, MultiIndex)
+            if is_invalid_assignee:
+                raise TypeError(
+                    "Column assignment doesn't support type " "{0}".format(type(v).__name__)
+                )
+            if callable(v):
+                kwargs[k] = v(self)
+
+
+
+5. Wait, the issue is supporting list, not rejecting MultiIndex. Let me re-think. The fix is to convert lists to pandas Series or similar.
+
+
+Replace:
+
+for k, v in kwargs.items():
+            is_invalid_assignee = (
+                not (isinstance(v, (Series, spark.Column)) or callable(v) or is_scalar(v))
+            ) or isinstance(v, MultiIndex)
+            if is_invalid_assignee:
+                raise TypeError(
+                    "Column assignment doesn't support type " "{0}".format(type(v).__name__)
+                )
+            if callable(v):
+                kwargs[k] = v(self)
+
+
+With:
+
+
+for k, v in kwargs.items():
+            is_invalid_assignee = (
+                not (
+                    isinstance(v, (Series, spark.Column, Index))
+                    or callable(v)
+                    or pandas_api.is_list_like(v)
+                    or is_scalar(v)
+                )
+            ) or isinstance(v, MultiIndex)
+            if is_invalid_assignee:
+                raise TypeError(
+                    "Column assignment doesn't support type " "{0}".format(type(v).__name__)
+                )
+            if callable(v):
+                kwargs[k] = v(self)
+
+ı~λ

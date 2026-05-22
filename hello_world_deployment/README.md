@@ -14,7 +14,20 @@ Minimal FastAPI microservice to practice deployment pipelines.
 
 ## Run locally
 
+### With Docker Compose (recommended)
 ```bash
+docker compose up --build
+```
+
+Then open:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000/docs
+
+### Backend only
+
+```bash
+cd backend
+
 # With Docker
 docker build -t hello-deploy .
 docker run -p 8000:8000 hello-deploy
@@ -30,6 +43,23 @@ uvicorn main:app --reload
 
 Then open: http://localhost:8000/docs
 
+### Frontend only
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Development server
+npm run dev
+
+# Build for production
+npm run build
+```
+
+Then open: http://localhost:5173
+
 ---
 
 ## AWS Console Setup (step-by-step)
@@ -38,9 +68,10 @@ Then open: http://localhost:8000/docs
 
 1. Go to **ECR → Repositories**
 2. Click **Create repository**
-3. Name: `teaching/deploy1`
+3. Name: `teaching/ecr_deploy1`
 4. Default configuration is fine
-5. Note the **Repository URI** (e.g., `123456789.dkr.ecr.us-east-1.amazonaws.com/teaching/deploy1`)
+5. Note the **Repository URI** (e.g., `123456789.dkr.ecr.us-east-1.amazonaws.com/teaching/ecr_deploy1`)
+
 
 ### 2. Create IAM User for GitHub Actions
 
@@ -71,7 +102,7 @@ Then open: http://localhost:8000/docs
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload"
       ],
-      "Resource": "arn:aws:ecr:*:ACCOUNT_ID:repository/deploy1"
+      "Resource": "arn:aws:ecr:*:ACCOUNT_ID:repository/ecr_deploy1"
     }
   ]
 }
@@ -137,12 +168,12 @@ Configure in **Settings → Environments → DEV → Secrets**:
 |-------------------------|------------------------------------------------|
 | `AWS_ACCESS_KEY_ID`     | From IAM user `github-actions`                 |
 | `AWS_SECRET_ACCESS_KEY` | From IAM user `github-actions`                 |
-| `AWS_ECR_REGISTRY`      | `123456789.dkr.ecr.us-east-1.amazonaws.com`   |
 | `AWS_REGION`            | `us-east-1` (or your region)                   |
-| `ECR_REPOSITORY_NAME`   | `deploy1`                                 |
 | `EC2_HOST`              | Public IP or DNS of the EC2 instance           |
 | `EC2_USER`              | `ec2-user` (Amazon Linux 2023)                 |
 | `EC2_SSH_KEY`           | Full contents of the `.pem` file               |
+
+> `BACKEND_REPOSITORY_NAME` and `FRONTEND_REPOSITORY_NAME` are configured in `.github/deploy-dev.yml` and do not need to be stored as secrets.
 
 ---
 
@@ -162,7 +193,7 @@ Configure in **Settings → Environments → DEV → Secrets**:
     "ecr:UploadLayerPart",
     "ecr:CompleteLayerUpload"
   ],
-  "Resource": "arn:aws:ecr:*:ACCOUNT_ID:repository/hello-deploy"
+  "Resource": "arn:aws:ecr:*:ACCOUNT_ID:repository/ecr_deploy1"
 }
 ```
 
@@ -186,15 +217,20 @@ Configure in **Settings → Environments → DEV → Secrets**:
 The file [.github/deploy-dev.yml](.github/deploy-dev.yml) should contain:
 
 1. **Trigger**: Push to `main` branch
-2. **Build**: Build Docker image
-3. **Push**: Push to ECR
-4. **Deploy**: SSH to EC2 and run:
+2. **Build**: Build the backend and frontend Docker images from `backend/` and `frontend/`
+3. **Push**: Push both images to ECR
+4. **Deploy**: SSH to EC2 and run both containers in the same Docker network so both services share the same host/VPC
    ```bash
-   aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ECR_REGISTRY
-   docker pull $AWS_ECR_REGISTRY/$ECR_REPOSITORY_NAME:latest
-   docker stop hello-deploy || true
-   docker rm hello-deploy || true
-   docker run -d -p 8000:8000 --name hello-deploy $AWS_ECR_REGISTRY/$ECR_REPOSITORY_NAME:latest
+   aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
+   docker pull $BACKEND_IMAGE_URI
+   docker pull $FRONTEND_IMAGE_URI
+   docker stop backend-container || true
+   docker rm backend-container || true
+   docker stop frontend-container || true
+   docker rm frontend-container || true
+   docker network create hello-deploy-network || true
+   docker run -d --name backend-container --network hello-deploy-network -p 8000:8000 $BACKEND_IMAGE_URI
+   docker run -d --name frontend-container --network hello-deploy-network -p 3000:3000 $FRONTEND_IMAGE_URI
    ```
 
 ---
