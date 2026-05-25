@@ -1,6 +1,4 @@
-# hello-deploy
-
-Minimal FastAPI microservice to practice deployment pipelines.
+# Minimal FastAPI microservice to practice deployment pipelines.
 
 ## Endpoints
 
@@ -66,68 +64,73 @@ Then open: http://localhost:5173
 
 ### 1. Create ECR Repository
 
-1. Go to **ECR → Repositories**
-2. Click **Create repository**
-3. Name: `teaching/ecr_deploy1`
-4. Default configuration is fine
-5. Note the **Repository URI** (e.g., `123456789.dkr.ecr.us-east-1.amazonaws.com/teaching/ecr_deploy1`)
+1.1. Go to **ECR → Repositories**
+1.2. Click **Create repository**
+1.3. Name: `teaching/ecr_deploy1`
+1.4. Default configuration is fine
+1.5. Note the **Repository URI** (e.g., `123456789.dkr.ecr.us-east-1.amazonaws.com/teaching/ecr_deploy1`)
 
 
 ### 2. Create IAM User for GitHub Actions
 
-1. Go to **IAM → Users → Create user**
-2. Name: `github-actions`
-3. Uncheck "Provide user access to the AWS Management Console"
-4. Click **Next**
-5. Click **Create policy** with the following JSON:
+2.1. Go to **IAM → Users → Create user**
+2.2. Name: `github-actions`
+2.3. Uncheck "Provide user access to the AWS Management Console"
+2.4. Click **Next**
+2.5. Click **Create policy** with the following JSON:
+   (Or edit the policy after creating the user and attach it to the user: Add permissions → Create inline policy → JSON)
 
 ```json
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecr:GetAuthorizationToken"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:PutImage",
-        "ecr:InitiateLayerUpload",
-        "ecr:UploadLayerPart",
-        "ecr:CompleteLayerUpload"
-      ],
-      "Resource": "arn:aws:ecr:*:ACCOUNT_ID:repository/ecr_deploy1"
-    }
-  ]
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Effect": "Allow",
+			"Action": [
+				"ecr:GetAuthorizationToken"
+			],
+			"Resource": "*"
+		},
+		{
+			"Effect": "Allow",
+			"Action": [
+				"ecr:BatchCheckLayerAvailability",
+				"ecr:GetDownloadUrlForLayer",
+				"ecr:BatchGetImage",
+				"ecr:PutImage",
+				"ecr:InitiateLayerUpload",
+				"ecr:UploadLayerPart",
+				"ecr:CompleteLayerUpload"
+			],
+			"Resource": "arn:aws:ecr:us-east-2:099554283130:repository/teaching/ecr_deploy1"
+		}
+	]
 }
 ```
 
-6. Save and return to Users
-7. Select the `github-actions` user and go to **Security credentials**
-8. Click **Create access key** → **Command Line Interface**
-9. **Copy and save** the `Access Key ID` and `Secret Access Key`
+2.6. Save and return to Users
+2.7. Select the `github-actions` user and go to **Security credentials**
+2.8. Click **Create access key** → **Command Line Interface**
+2.9. **Copy and save** the `Access Key ID` and `Secret Access Key`
+2.10. copy the `Access Key ID` and `Secret Access Key` to GitHub Secrets (see step 6 below)
+
 
 ### 3. Create EC2 Instance
 
-1. Go to **EC2 → Instances → Launch instances**
-2. **AMI**: Amazon Linux 2023 (free tier)
-3. **Instance type**: `t2.micro` (free tier)
-4. **Key pair**: Create a new one (save the `.pem` file)
-5. **Network settings**: Keep default VPC
-6. **Firewall (security groups)**: Create security group with inbound rules (see step 5 below)
-7. Click **Launch instance**
+3.1. Go to **EC2 → Instances → Launch instances**
+3.2. **AMI**: Amazon Linux 2023 (free tier)
+3.3. **Instance type**: `t2.micro` (free tier)
+3.4. **Key pair**: Create a new one (save the `.pem` file)
+    # ec2-key-pair-for-deploy1
+3.5. **Network settings**: Keep default VPC
+3.6. **Firewall (security groups)**: Create security group with inbound rules (see step 4 below)
+3.7. Click **Launch instance**
 
 ### 4. Create IAM Role for EC2
 
-1. Go to **IAM → Roles → Create role**
-2. Service: `EC2`
-3. Create policy for EC2:
+4.1. Go to **IAM → Roles → Create role**
+4.2. Service: `EC2`
+4.3. Create policy for EC2:
 
 ```json
 {
@@ -146,32 +149,32 @@ Then open: http://localhost:5173
 }
 ```
 
-4. Name: `ec2-hello-deploy-role`
-5. Go to **EC2 → Instances** → select your instance
-6. **Security → Modify IAM instance profile** → select the created role
+4.4. Name: `ec2-hello-deploy-role`
+4.5. Go to **EC2 → Instances** → select your instance
+4.6. **Actions -> Security → Modify IAM instance profile** → select the created role
 
 ### 5. Configure Security Group
 
-1. In **EC2 → Security Groups** (associated with your instance)
-2. Click **Edit inbound rules**
-3. Add:
+5.1. In **EC2 → Security Groups** (associated with your instance)
+5.2. Click **Edit inbound rules**
+5.3. Add:
    - **Port 8000** (TCP) from anywhere (`0.0.0.0/0`) - for the app
    - **Port 22** (SSH) from your IP - for deployment
 
 ---
 
-## Required GitHub Secrets
+## 6. Required GitHub Secrets
 
-Configure in **Settings → Environments → DEV → Secrets**:
+6.1 Configure in **Repo-> Settings → Environments → DEV → Secrets**:
 
-| Secret                  | Value                                          |
-|-------------------------|------------------------------------------------|
-| `AWS_ACCESS_KEY_ID`     | From IAM user `github-actions`                 |
-| `AWS_SECRET_ACCESS_KEY` | From IAM user `github-actions`                 |
-| `AWS_REGION`            | `us-east-1` (or your region)                   |
-| `EC2_HOST`              | Public IP or DNS of the EC2 instance           |
-| `EC2_USER`              | `ec2-user` (Amazon Linux 2023)                 |
-| `EC2_SSH_KEY`           | Full contents of the `.pem` file               |
+| Secret                  | Value                                |
+|-------------------------|--------------------------------------|
+| `AWS_ACCESS_KEY_ID`     | From IAM user `github-actions`       |
+| `AWS_SECRET_ACCESS_KEY` | From IAM user `github-actions`       |
+| `AWS_REGION`            | `us-east-2` (or your region)         |
+| `EC2_HOST`              | Public IP or DNS of the EC2 instance |
+| `EC2_USER`              | `ec2-user` (Amazon Linux 2023)       |
+| `EC2_SSH_KEY`           | Full contents of the `.pem` file     |
 
 > `BACKEND_REPOSITORY_NAME` and `FRONTEND_REPOSITORY_NAME` are configured in `.github/deploy-dev.yml` and do not need to be stored as secrets.
 
@@ -179,47 +182,14 @@ Configure in **Settings → Environments → DEV → Secrets**:
 
 ---
 
-## Minimum Required IAM Permissions (reference)
-
-**For GitHub Actions (ECR Push)**:
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "ecr:GetAuthorizationToken",
-    "ecr:BatchCheckLayerAvailability",
-    "ecr:PutImage",
-    "ecr:InitiateLayerUpload",
-    "ecr:UploadLayerPart",
-    "ecr:CompleteLayerUpload"
-  ],
-  "Resource": "arn:aws:ecr:*:ACCOUNT_ID:repository/ecr_deploy1"
-}
-```
-
-**For EC2 (ECR Pull)**:
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "ecr:GetAuthorizationToken",
-    "ecr:BatchGetImage",
-    "ecr:GetDownloadUrlForLayer"
-  ],
-  "Resource": "*"
-}
-```
-
----
-
-## GitHub Actions Workflow
+## 7. GitHub Actions Workflow
 
 The file [.github/deploy-dev.yml](.github/deploy-dev.yml) should contain:
 
-1. **Trigger**: Push to `main` branch
-2. **Build**: Build the backend and frontend Docker images from `backend/` and `frontend/`
-3. **Push**: Push both images to ECR
-4. **Deploy**: SSH to EC2 and run both containers in the same Docker network so both services share the same host/VPC
+7.1. **Trigger**: Push to `main` branch
+7.2. **Build**: Build the backend and frontend Docker images from `backend/` and `frontend/`
+7.3. **Push**: Push both images to ECR
+7.4. **Deploy**: SSH to EC2 and run both containers in the same Docker network so both services share the same host/VPC
    ```bash
    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
    docker pull $BACKEND_IMAGE_URI
