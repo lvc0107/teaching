@@ -8,13 +8,6 @@ on:
       - 'hello_world_deployment/*'           # Everything in the deployment folder
       - '.github/workflows/deploy.yml'        # The own workflow
 
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'hello_world_deployment/**'
-      - '.github/workflows/deploy.yml'
-
 env:
   AWS_REGION: us-east-2
 
