@@ -1,9 +1,22 @@
-name: Deploy to DEV
+name: Deploy to DEV - try 1
 
 on:
   push:
     branches:
       - main
+    paths:
+      - 'hello_world_deployment/**'           # Everything in the deployment folder
+      - '.github/workflows/deploy.yml'        # The own workflow
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'hello_world_deployment/**'
+      - '.github/workflows/deploy.yml'
+
+  workflow_dispatch:   # Allow manual execution from GitHub UI
+
 
 env:
   AWS_REGION: us-east-2
