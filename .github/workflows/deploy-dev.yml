@@ -41,32 +41,53 @@ jobs:
           mask-aws-account-id: "true"
 
       - name: Test AWS Credentials
-        id: aws-test
         run: |
           echo "Testing AWS credentials..."
           aws sts get-caller-identity --output json
-          echo "AWS credentials are valid."
-        continue-on-error: false
+          echo "✅ AWS credentials are valid."
 
       # ── 3. Login to Amazon ECR ────────────────────────────────────────────
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      # ── 4. Build & push Docker images ─────────────────────────────────────
+      # ── 4. Build & Push Docker Images ─────────────────────────────────────
       - name: Build and Push Docker Images
+        id: build-and-push
         run: |
-          echo "🔨 Building Backend Image..."
+          echo "📍 Current directory: $(pwd)"
+          ls -la
+
+          # Move into the project folder
+          cd hello_world_deployment
+
+          echo "📂 Now inside hello_world_deployment folder:"
+          ls -la
+
+          # === BUILD BACKEND ===
+          echo "🔨 Building Backend Docker Image..."
           BACKEND_IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:backend-$IMAGE_TAG"
-          docker build -t "$BACKEND_IMAGE_URI" -f ./backend/Dockerfile ./backend
+          
+          docker build -t "$BACKEND_IMAGE_URI" \
+                       -f ./backend/Dockerfile \
+                       ./backend
+
+          echo "🚀 Pushing Backend Image..."
           docker push "$BACKEND_IMAGE_URI"
           echo "✅ Backend image pushed: $BACKEND_IMAGE_URI"
           
-          echo "🔨 Building Frontend Image..."
+          # === BUILD FRONTEND ===
+          echo "🔨 Building Frontend Docker Image..."
           FRONTEND_IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG"
-          docker build -t "$FRONTEND_IMAGE_URI" -f ./frontend/Dockerfile ./frontend
+          
+          docker build -t "$FRONTEND_IMAGE_URI" \
+                       -f ./frontend/Dockerfile \
+                       ./frontend
+
+          echo "🚀 Pushing Frontend Image..."
           docker push "$FRONTEND_IMAGE_URI"
           echo "✅ Frontend image pushed: $FRONTEND_IMAGE_URI"
 
+          # Set outputs
           echo "backend_image_uri=$BACKEND_IMAGE_URI" >> "$GITHUB_OUTPUT"
           echo "frontend_image_uri=$FRONTEND_IMAGE_URI" >> "$GITHUB_OUTPUT"
         env:
@@ -122,12 +143,9 @@ jobs:
 
             for i in $(seq 1 10); do
               sleep 3
-
-              STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                http://localhost:$BACKEND_PORT/health || true)
-
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$BACKEND_PORT/health || true)
               if [ "$STATUS" = "200" ]; then
-                echo "✅ Backend healthy"
+                echo "✅ Backend is healthy"
                 docker ps
                 exit 0
               fi
@@ -146,8 +164,8 @@ jobs:
             exit 1
 
         env:
-          BACKEND_IMAGE_URI: ${{ steps.build-image.outputs.backend_image_uri }}
-          FRONTEND_IMAGE_URI: ${{ steps.build-image.outputs.frontend_image_uri }}
+          BACKEND_IMAGE_URI: ${{ steps.build-and-push.outputs.backend_image_uri }}
+          FRONTEND_IMAGE_URI: ${{ steps.build-and-push.outputs.frontend_image_uri }}
 
           CONTAINER_BACKEND: ${{ env.CONTAINER_BACKEND }}
           CONTAINER_FRONTEND: ${{ env.CONTAINER_FRONTEND }}
