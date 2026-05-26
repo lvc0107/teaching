@@ -38,4 +38,4 @@ def ping():
 @app.get("/health")
 def health():
     """Used by GitHub Actions and load balancers to verify the service is up."""
-    return {"status": "ok"}
+    return {"status": "ok!!!"}
