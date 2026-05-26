@@ -162,6 +162,8 @@ Then open: http://localhost:5173
 5.2. Click **Edit inbound rules**
 5.3. Add:
 - **Port 8000** (TCP) from anywhere (`0.0.0.0/0`) - for the app
+- **Port 3000** (TCP) from anywhere (`0.0.0.0/0`) - for the app
+- **Port 443** (TCP) from anywhere (`0.0.0.0/0`) - for the app
 - **Port 22** (SSH) from your IP - for deployment
 
 ---
