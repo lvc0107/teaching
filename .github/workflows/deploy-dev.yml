@@ -105,6 +105,15 @@ jobs:
           script: |
             set -e
 
+            echo "🔧 Installing Docker (Amazon Linux 2023)..."
+            sudo dnf update -y
+            sudo dnf install -y docker
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo usermod -aG docker $USER
+
+            echo "✅ Docker installed and started"
+
             echo "Logging into ECR..."
             aws ecr get-login-password --region "$AWS_REGION" | \
               docker login --username AWS --password-stdin "$ECR_REGISTRY"
@@ -113,7 +122,7 @@ jobs:
             docker pull "$BACKEND_IMAGE_URI"
             docker pull "$FRONTEND_IMAGE_URI"
 
-            echo "Creating docker network if needed..."
+            echo "Creating docker network..."
             docker network create hello-deploy-network 2>/dev/null || true
 
             echo "Stopping old containers..."

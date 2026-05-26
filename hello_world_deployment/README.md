@@ -132,6 +132,7 @@ Then open: http://localhost:5173
 4.1. Go to **IAM → Roles → Create role**
 4.2. Service: `EC2`
 4.3. Create policy for EC2:
+  name: `ec2-ecr-pull-policy`
 
 ```json
 {
@@ -141,8 +142,9 @@ Then open: http://localhost:5173
       "Effect": "Allow",
       "Action": [
         "ecr:GetAuthorizationToken",
-        "ecr:BatchGetImage",
-        "ecr:GetDownloadUrlForLayer"
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
       ],
       "Resource": "*"
     }
