@@ -116,24 +116,23 @@ jobs:
 
             echo "Logging into ECR..."
             aws ecr get-login-password --region "$AWS_REGION" | \
-              docker login --username AWS --password-stdin "$ECR_REGISTRY"
+              sudo docker login --username AWS --password-stdin "$ECR_REGISTRY"
 
             echo "Pulling latest images..."
-            docker pull "$BACKEND_IMAGE_URI"
-            docker pull "$FRONTEND_IMAGE_URI"
+            sudo docker pull "$BACKEND_IMAGE_URI"
+            sudo docker pull "$FRONTEND_IMAGE_URI"
 
             echo "Creating docker network..."
-            docker network create hello-deploy-network 2>/dev/null || true
+            sudo docker network create hello-deploy-network 2>/dev/null || true
 
             echo "Stopping old containers..."
-            docker stop "$CONTAINER_BACKEND" 2>/dev/null || true
-            docker rm "$CONTAINER_BACKEND" 2>/dev/null || true
-
-            docker stop "$CONTAINER_FRONTEND" 2>/dev/null || true
-            docker rm "$CONTAINER_FRONTEND" 2>/dev/null || true
+            sudo docker stop "$CONTAINER_BACKEND" 2>/dev/null || true
+            sudo docker rm "$CONTAINER_BACKEND" 2>/dev/null || true
+            sudo docker stop "$CONTAINER_FRONTEND" 2>/dev/null || true
+            sudo docker rm "$CONTAINER_FRONTEND" 2>/dev/null || true
 
             echo "Starting backend container..."
-            docker run -d \
+            sudo docker run -d \
               --name "$CONTAINER_BACKEND" \
               --restart unless-stopped \
               --network hello-deploy-network \
@@ -141,7 +140,7 @@ jobs:
               "$BACKEND_IMAGE_URI"
 
             echo "Starting frontend container..."
-            docker run -d \
+            sudo docker run -d \
               --name "$CONTAINER_FRONTEND" \
               --restart unless-stopped \
               --network hello-deploy-network \
