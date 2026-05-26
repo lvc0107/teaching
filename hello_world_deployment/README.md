@@ -2,22 +2,24 @@
 
 ## Endpoints
 
-| Method | Route     | Description                                       |
-|--------|-----------|---------------------------------------------------|
-| GET    | `/`       | Hello World + environment info                    |
-| GET    | `/ping`   | Returns how many times this endpoint was invoked  |
-| GET    | `/health` | Health check (used by GitHub Actions and LBs)     |
+| Method | Route     | Description                                      |
+|--------|-----------|--------------------------------------------------|
+| GET    | `/`       | Hello World + environment info                   |
+| GET    | `/ping`   | Returns how many times this endpoint was invoked |
+| GET    | `/health` | Health check (used by GitHub Actions and LBs)    |
 
 ---
 
 ## Run locally
 
 ### With Docker Compose (recommended)
+
 ```bash
 docker compose up --build
 ```
 
 Then open:
+
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000/docs
 
@@ -70,7 +72,6 @@ Then open: http://localhost:5173
 1.4. Default configuration is fine
 1.5. Note the **Repository URI** (e.g., `123456789.dkr.ecr.us-east-1.amazonaws.com/teaching/ecr_deploy1`)
 
-
 ### 2. Create IAM User for GitHub Actions
 
 2.1. Go to **IAM → Users → Create user**
@@ -78,33 +79,33 @@ Then open: http://localhost:5173
 2.3. Uncheck "Provide user access to the AWS Management Console"
 2.4. Click **Next**
 2.5. Click **Create policy** with the following JSON:
-   (Or edit the policy after creating the user and attach it to the user: Add permissions → Create inline policy → JSON)
+(Or edit the policy after creating the user and attach it to the user: Add permissions → Create inline policy → JSON)
 
 ```json
 {
-	"Version": "2012-10-17",
-	"Statement": [
-		{
-			"Effect": "Allow",
-			"Action": [
-				"ecr:GetAuthorizationToken"
-			],
-			"Resource": "*"
-		},
-		{
-			"Effect": "Allow",
-			"Action": [
-				"ecr:BatchCheckLayerAvailability",
-				"ecr:GetDownloadUrlForLayer",
-				"ecr:BatchGetImage",
-				"ecr:PutImage",
-				"ecr:InitiateLayerUpload",
-				"ecr:UploadLayerPart",
-				"ecr:CompleteLayerUpload"
-			],
-			"Resource": "arn:aws:ecr:us-east-2:099554283130:repository/teaching/ecr_deploy1"
-		}
-	]
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload"
+      ],
+      "Resource": "arn:aws:ecr:us-east-2:099554283130:repository/teaching/ecr_deploy1"
+    }
+  ]
 }
 ```
 
@@ -114,17 +115,17 @@ Then open: http://localhost:5173
 2.9. **Copy and save** the `Access Key ID` and `Secret Access Key`
 2.10. copy the `Access Key ID` and `Secret Access Key` to GitHub Secrets (see step 6 below)
 
-
 ### 3. Create EC2 Instance
 
 3.1. Go to **EC2 → Instances → Launch instances**
-3.2. **AMI**: Amazon Linux 2023 (free tier)
-3.3. **Instance type**: `t2.micro` (free tier)
-3.4. **Key pair**: Create a new one (save the `.pem` file)
-    # ec2-key-pair-for-deploy1
-3.5. **Network settings**: Keep default VPC
-3.6. **Firewall (security groups)**: Create security group with inbound rules (see step 4 below)
-3.7. Click **Launch instance**
+3.2. Name: `deploy1-ec2` 
+3.3. **AMI**: Amazon Linux 2023 (free tier) 
+3.4. **Instance type**: `t2.micro` (free tier) 
+3.5. **Key pair**: Create a new one (save the `.pem` file) 
+    name: ec2-key-pair-for-deploy1
+3.6. **Network settings**: Keep default VPC
+3.7. **Firewall (security groups)**: Create security group with inbound rules (see step 5 below)
+3.8. Click **Launch instance**
 
 ### 4. Create IAM Role for EC2
 
@@ -158,8 +159,8 @@ Then open: http://localhost:5173
 5.1. In **EC2 → Security Groups** (associated with your instance)
 5.2. Click **Edit inbound rules**
 5.3. Add:
-   - **Port 8000** (TCP) from anywhere (`0.0.0.0/0`) - for the app
-   - **Port 22** (SSH) from your IP - for deployment
+- **Port 8000** (TCP) from anywhere (`0.0.0.0/0`) - for the app
+- **Port 22** (SSH) from your IP - for deployment
 
 ---
 
@@ -171,12 +172,16 @@ Then open: http://localhost:5173
 |-------------------------|--------------------------------------|
 | `AWS_ACCESS_KEY_ID`     | From IAM user `github-actions`       |
 | `AWS_SECRET_ACCESS_KEY` | From IAM user `github-actions`       |
-| `AWS_REGION`            | `us-east-2` (or your region)         |
 | `EC2_HOST`              | Public IP or DNS of the EC2 instance |
 | `EC2_USER`              | `ec2-user` (Amazon Linux 2023)       |
 | `EC2_SSH_KEY`           | Full contents of the `.pem` file     |
 
-> `BACKEND_REPOSITORY_NAME` and `FRONTEND_REPOSITORY_NAME` are configured in `.github/deploy-dev.yml` and do not need to be stored as secrets.
+| Environment  | Value                        |
+|--------------|------------------------------|
+| `AWS_REGION` | `us-east-2` (or your region) |
+
+> `BACKEND_REPOSITORY_NAME` and `FRONTEND_REPOSITORY_NAME` are configured in `.github/deploy-dev.yml` and do not need to
+> be stored as secrets.
 
 ---
 
@@ -190,6 +195,7 @@ The file [.github/deploy-dev.yml](.github/deploy-dev.yml) should contain:
 7.2. **Build**: Build the backend and frontend Docker images from `backend/` and `frontend/`
 7.3. **Push**: Push both images to ECR
 7.4. **Deploy**: SSH to EC2 and run both containers in the same Docker network so both services share the same host/VPC
+
    ```bash
    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
    docker pull $BACKEND_IMAGE_URI
@@ -221,15 +227,16 @@ unzip awscliv2.zip && sudo ./aws/install
 # Logout and login again for ec2-user to have docker permissions
 ```
 
-**Note**: The EC2 instance needs an **IAM Instance Profile** with `ecr:GetAuthorizationToken` and `ecr:BatchGetImage` permissions to pull from ECR without hardcoded credentials.
+**Note**: The EC2 instance needs an **IAM Instance Profile** with `ecr:GetAuthorizationToken` and `ecr:BatchGetImage`
+permissions to pull from ECR without hardcoded credentials.
 
 ---
 
 ## Future Environments
 
-| Branch / Tag | Environment | Status                    |
-|--------------|-------------|---------------------------|
-| `main`       | DEV         | ✅ Implemented            |
-| `release/*`  | QA          | 🔜 Coming soon            |
-| tag `uat-*`  | UAT         | 🔜 Coming soon            |
-| tag `v*.*.*` | PROD        | 🔜 With manual approval   |
+| Branch / Tag | Environment | Status                  |
+|--------------|-------------|-------------------------|
+| `main`       | DEV         | ✅ Implemented           |
+| `release/*`  | QA          | 🔜 Coming soon          |
+| tag `uat-*`  | UAT         | 🔜 Coming soon          |
+| tag `v*.*.*` | PROD        | 🔜 With manual approval |
