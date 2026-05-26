@@ -5,8 +5,17 @@ on:
     branches:
       - main
     paths:
-      - 'hello_world_deployment/*'           # Everything in the deployment folder
-      - '.github/workflows/deploy.yml'        # The own workflow
+      - 'hello_world_deployment/**'
+      - '.github/workflows/**'
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'hello_world_deployment/**'
+      - '.github/workflows/**'
+
+  workflow_dispatch:
 
 env:
   AWS_REGION: us-east-2
