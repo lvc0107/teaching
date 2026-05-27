@@ -244,3 +244,111 @@ permissions to pull from ECR without hardcoded credentials.
 | `release/*`  | QA          | 🔜 Coming soon          |
 | tag `uat-*`  | UAT         | 🔜 Coming soon          |
 | tag `v*.*.*` | PROD        | 🔜 With manual approval |
+
+
+NGINX: hide ports: to keep it leaves your services vulnerable to attacks
+also: Primary benefit to the reverse proxy is that it can let you have MANY hosts behind port 443 and manage the host redirection / certs etc.
+
+No Encryption (SSL/TLS): Direct connections pass traffic, including passwords, in plaintext. A reverse proxy handles Let's Encrypt SSL/TLS termination securely.
+Vulnerability Disclosure: Exposing specific app ports allows scanners to identify your exact software stack and version. This lets attackers target known CVEs directly How to Secure Your Nginx Server.
+Lack of Rate Limiting & Bot Protection: Without NGINX, a single angry bot or DDoS attack can easily overwhelm and crash your backend application Nginx + Docker: Stop Exposing Your App Ports to the World.
+Missing Compression: Proxies compress outgoing data, saving bandwidth and improving load times.
+```
+
+Internet
+   ↓ (Port 80 / 443)
+Nginx
+   ├── /           → Frontend (Svelte)
+   └── /api/       → Backend (FastAPI)
+```
+
+
+1. Connect via ssh to the EC2 instance and run:
+```
+ssh -i "path/to/your/ec2-key-pair-for-deploy1.pem" ec2-user@your-ec2-public-ip
+```
+
+2. Install Nginx and configure it as a reverse proxy to forward requests from port 80/443 to your backend and frontend services running on ports 8000 and 3000, respectively.
+
+   ```
+    sudo dnf update -y
+    sudo dnf install -y nginx
+    sudo systemctl start nginx
+    sudo systemctl enable nginx
+    # Allow Nginx in the firewall (Amazon Linux 2023)
+    sudo firewall-cmd --permanent --add-service=http
+    sudo firewall-cmd --permanent --add-service=https
+    sudo firewall-cmd --reload
+    # Updates ports in the Amazon Linux 2023 firewall
+    sudo dnf install -y iptables-services
+    sudo systemctl start iptables
+    sudo systemctl enable iptables
+    # Open HTTP y HTTPS ports
+    sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+    sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+    # Save the rules
+    sudo iptables-save | sudo tee /etc/sysconfig/iptables
+    # Verify that Nginx is running
+    sudo systemctl status nginx
+    curl -I http://localhost
+    # 1. Check if Nginx is listening in all interfaces
+    sudo ss -ltnp | grep nginx
+    # 2. See the current iptables rules
+    sudo iptables -L -n -v
+    # 3. Test if you can access Nginx locally (should return HTTP 200 or 403, but not connection refused)
+    curl -I http://localhost
+    # Clean up iptables rules (if needed) and allow only HTTP, HTTPS and SSH
+    sudo iptables -F
+    sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+    sudo iptables-save | sudo tee /etc/sysconfig/iptables
+   ```
+
+3. Configure Nginx to serve the frontend on `/` and proxy API requests starting with `/api/` to the backend.
+```
+sudo vim /etc/nginx/conf.d/default.conf
+``` 
+Apply the following configuration:
+
+```nginx
+server {
+    listen 80;
+    server_name _;   # Change later to your domain
+
+    # Frontend (Svelte/Vite)
+    root /var/www/frontend/dist;     # We'll copy the build here
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Backend API
+    location /api/ {
+        proxy_pass http://127.0.0.1:8000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Health check for backend
+    location /health {
+        proxy_pass http://127.0.0.1:8000/health;
+    }
+}
+``` 
+
+Apply the changes and restart Nginx:
+```
+   sudo nginx -t
+   sudo systemctl restart nginx
+```
+
+4. Update your Docker containers
+We should change the containers so they don't expose ports publicly anymore:
+```
+Backend: Remove -p 8000:8000
+Frontend: Remove -p 3000:3000
+```

@@ -151,7 +151,6 @@ jobs:
               --name "$CONTAINER_BACKEND" \
               --restart unless-stopped \
               --network hello-deploy-network \
-              -p "$BACKEND_PORT:$BACKEND_PORT" \
               "$BACKEND_IMAGE_URI"
 
             echo "Starting frontend container..."
@@ -159,7 +158,6 @@ jobs:
               --name "$CONTAINER_FRONTEND" \
               --restart unless-stopped \
               --network hello-deploy-network \
-              -p "$FRONTEND_PORT:$FRONTEND_PORT" \
               "$FRONTEND_IMAGE_URI"
 
             echo "Waiting for backend health check..."
