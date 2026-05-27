@@ -7,8 +7,9 @@
   let loading = false
   let error = null
   
-  const hostname = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
-  const API_BASE = `http://${hostname}:8000`
+  
+  const API_URL = import.meta.env.VITE_API_URL;
+  
   
   onMount(async () => {
     await fetchHello()
@@ -18,8 +19,8 @@
     try {
       loading = true
       error = null
-      console.log('Fetching from:', `${API_BASE}/`)
-      const response = await fetch(`${API_BASE}/`)
+      console.log('Fetching from:', `${API_URL}/`)
+      const response = await fetch(`${API_URL}/`)
       console.log('Response status:', response.status)
       console.log('Response headers:', response.headers)
       
@@ -40,7 +41,7 @@
     try {
       loading = true
       error = null
-      const response = await fetch(`${API_BASE}/ping`)
+      const response = await fetch(`${API_URL}/ping`)
       if (!response.ok) throw new Error('Failed to fetch ping')
       pingData = await response.json()
     } catch (err) {
