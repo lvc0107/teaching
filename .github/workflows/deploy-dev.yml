@@ -19,12 +19,9 @@ on:
 
 env:
   AWS_REGION: us-east-2
-
-  # ECR
   ECR_REGISTRY: 099554283130.dkr.ecr.us-east-2.amazonaws.com
   ECR_REPOSITORY: teaching/ecr_deploy1
 
-  # Containers
   CONTAINER_BACKEND: backend-container
   CONTAINER_FRONTEND: frontend-container
 
@@ -82,6 +79,7 @@ jobs:
           echo "frontend_image_uri=$FRONTEND_IMAGE_URI" >> "$GITHUB_OUTPUT"
         env:
           IMAGE_TAG: ${{ github.sha }}
+          EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP }}
 
       # ── 5. Deploy to EC2 ──────────────────────────────────────────────────
       - name: Deploy on EC2 via SSH
@@ -90,6 +88,8 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+
+          envs: BACKEND_IMAGE_URI, FRONTEND_IMAGE_URI, CONTAINER_BACKEND, CONTAINER_FRONTEND, AWS_REGION, ECR_REGISTRY
 
           script: |
             set -e
@@ -138,9 +138,9 @@ jobs:
             done
 
             echo "❌ Health check failed"
-            echo "Backend logs:"
+            echo "=== Backend Logs ==="
             sudo docker logs "$CONTAINER_BACKEND"
-            echo "Frontend logs:"
+            echo "=== Frontend Logs ==="
             sudo docker logs "$CONTAINER_FRONTEND"
             exit 1
 
