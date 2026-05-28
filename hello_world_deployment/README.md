@@ -245,6 +245,18 @@ permissions to pull from ECR without hardcoded credentials.
 | tag `uat-*`  | UAT         | 🔜 Coming soon          |
 | tag `v*.*.*` | PROD        | 🔜 With manual approval |
 
+Docker on EC2
+```
+ echo "🔧 Installing Docker (Amazon Linux 2023)..."
+-            sudo dnf update -y
+-            sudo dnf install -y docker
+-            sudo systemctl start docker
+-            sudo systemctl enable docker
+-            sudo usermod -aG docker $USER
+-
+-            echo "✅ Docker installed and started"
+-
+```
 
 NGINX: hide ports: to keep it leaves your services vulnerable to attacks
 also: Primary benefit to the reverse proxy is that it can let you have MANY hosts behind port 443 and manage the host redirection / certs etc.

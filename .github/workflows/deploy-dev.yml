@@ -28,10 +28,6 @@ env:
   CONTAINER_BACKEND: backend-container
   CONTAINER_FRONTEND: frontend-container
 
-  # Ports
-  BACKEND_PORT: 8000
-  FRONTEND_PORT: 3000
-
 jobs:
   deploy:
     name: Build → Push ECR → Deploy EC2
@@ -66,46 +62,26 @@ jobs:
       - name: Build and Push Docker Images
         id: build-and-push
         run: |
-          echo "📍 Current directory: $(pwd)"
-          ls -la
-
-          # Move into the project folder
           cd hello_world_deployment
-
-          echo "📂 Now inside hello_world_deployment folder:"
-          ls -la
 
           # === BUILD BACKEND ===
           echo "🔨 Building Backend Docker Image..."
           BACKEND_IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:backend-$IMAGE_TAG"
-          
-          docker build -t "$BACKEND_IMAGE_URI" \
-                       -f ./backend/Dockerfile \
-                       ./backend
-
-          echo "🚀 Pushing Backend Image..."
+          docker build -t "$BACKEND_IMAGE_URI" -f ./backend/Dockerfile ./backend
           docker push "$BACKEND_IMAGE_URI"
           echo "✅ Backend image pushed: $BACKEND_IMAGE_URI"
           
           # === BUILD FRONTEND (with API URL injection) ===
           echo "🔨 Building Frontend Docker Image..."
           FRONTEND_IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:frontend-$IMAGE_TAG"
-          
-          docker build -t "$FRONTEND_IMAGE_URI" \
-                       -f ./frontend/Dockerfile \
-                       --build-arg VITE_API_BASE_URL="http://${EC2_PUBLIC_IP}:8000" \
-                       ./frontend
-
-          echo "🚀 Pushing Frontend Image..."
+          docker build -t "$FRONTEND_IMAGE_URI" -f ./frontend/Dockerfile ./frontend
           docker push "$FRONTEND_IMAGE_URI"
           echo "✅ Frontend image pushed: $FRONTEND_IMAGE_URI"
 
-          # Set outputs
           echo "backend_image_uri=$BACKEND_IMAGE_URI" >> "$GITHUB_OUTPUT"
           echo "frontend_image_uri=$FRONTEND_IMAGE_URI" >> "$GITHUB_OUTPUT"
         env:
           IMAGE_TAG: ${{ github.sha }}
-          EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP }}
 
       # ── 5. Deploy to EC2 ──────────────────────────────────────────────────
       - name: Deploy on EC2 via SSH
@@ -115,19 +91,8 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
 
-          envs: BACKEND_IMAGE_URI,FRONTEND_IMAGE_URI,CONTAINER_BACKEND,CONTAINER_FRONTEND,BACKEND_PORT,FRONTEND_PORT,AWS_REGION,ECR_REGISTRY
-
           script: |
             set -e
-
-            echo "🔧 Installing Docker (Amazon Linux 2023)..."
-            sudo dnf update -y
-            sudo dnf install -y docker
-            sudo systemctl start docker
-            sudo systemctl enable docker
-            sudo usermod -aG docker $USER
-
-            echo "✅ Docker installed and started"
 
             echo "Logging into ECR..."
             aws ecr get-login-password --region "$AWS_REGION" | \
@@ -146,53 +111,43 @@ jobs:
             sudo docker stop "$CONTAINER_FRONTEND" 2>/dev/null || true
             sudo docker rm "$CONTAINER_FRONTEND" 2>/dev/null || true
 
-            echo "Starting backend container..."
+            echo "Starting Backend container (internal)..."
             sudo docker run -d \
               --name "$CONTAINER_BACKEND" \
               --restart unless-stopped \
               --network hello-deploy-network \
               "$BACKEND_IMAGE_URI"
 
-            echo "Starting frontend container..."
+            echo "Starting Frontend container (internal)..."
             sudo docker run -d \
               --name "$CONTAINER_FRONTEND" \
               --restart unless-stopped \
               --network hello-deploy-network \
               "$FRONTEND_IMAGE_URI"
 
-            echo "Waiting for backend health check..."
-
-            for i in $(seq 1 10); do
-              sleep 3
-              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$BACKEND_PORT/health || true)
+            echo "Waiting for backend health check via Nginx..."
+            for i in $(seq 1 15); do
+              sleep 4
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/health || true)
               if [ "$STATUS" = "200" ]; then
-                echo "✅ Backend is healthy"
-                docker ps
+                echo "✅ Backend is healthy via Nginx"
+                sudo docker ps
                 exit 0
               fi
-
               echo "Attempt $i failed with HTTP $STATUS"
             done
 
-            echo "❌ Backend health check failed"
-
+            echo "❌ Health check failed"
             echo "Backend logs:"
-            docker logs "$CONTAINER_BACKEND"
-
+            sudo docker logs "$CONTAINER_BACKEND"
             echo "Frontend logs:"
-            docker logs "$CONTAINER_FRONTEND"
-
+            sudo docker logs "$CONTAINER_FRONTEND"
             exit 1
 
         env:
           BACKEND_IMAGE_URI: ${{ steps.build-and-push.outputs.backend_image_uri }}
           FRONTEND_IMAGE_URI: ${{ steps.build-and-push.outputs.frontend_image_uri }}
-
           CONTAINER_BACKEND: ${{ env.CONTAINER_BACKEND }}
           CONTAINER_FRONTEND: ${{ env.CONTAINER_FRONTEND }}
-
-          BACKEND_PORT: ${{ env.BACKEND_PORT }}
-          FRONTEND_PORT: ${{ env.FRONTEND_PORT }}
-
           AWS_REGION: ${{ env.AWS_REGION }}
           ECR_REGISTRY: ${{ env.ECR_REGISTRY }}
