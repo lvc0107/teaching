@@ -116,6 +116,7 @@ jobs:
               --name "$CONTAINER_BACKEND" \
               --restart unless-stopped \
               --network hello-deploy-network \
+              --port 127.0.0.1:8000:8000
               "$BACKEND_IMAGE_URI"
 
             echo "Starting Frontend container (internal)..."
@@ -123,6 +124,7 @@ jobs:
               --name "$CONTAINER_FRONTEND" \
               --restart unless-stopped \
               --network hello-deploy-network \
+              --port 127.0.0.1:3000:3000
               "$FRONTEND_IMAGE_URI"
 
             echo "Waiting for backend health check via Nginx..."
